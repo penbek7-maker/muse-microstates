@@ -85,7 +85,7 @@ pip install muselsl pylsl numpy scipy python-osc
 
 PART 2 — Download the Project Files (Beginner Friendly)
 
-⚠️ The Python script is not installed automatically.
+!) The Python script is not installed automatically.
 It is simply downloaded and run.
 
 Download
