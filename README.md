@@ -130,6 +130,11 @@ Start the synthetic 32-channel LiveAmp-like stream:
 python simulate_liveamp.py
 ```
 
+The simulator uses a representative standard 32-channel montage. It does not
+claim that the delivered cap or BrainVision workspace will use the same labels
+or order. Custom labels can be supplied with `--channel-labels`. The real engine
+does not use this simulated list: it reads the actual channel metadata from LSL.
+
 In another terminal, connect the Hyponoia engine:
 
 ```bash

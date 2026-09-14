@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.1 - Simulator montage clarification
+
+### Changed
+
+- Replaced the provisional simulator labels with a representative published
+  LiveAmp-32 montage.
+- Made simulator channel labels configurable and explicitly non-authoritative.
+- Confirmed that the real engine always reads channel labels from LSL metadata.
+
 ## 0.3.0 - Device-independent Hyponoia EEG engine
 
 ### Added

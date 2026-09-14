@@ -7,11 +7,13 @@ import time
 import numpy as np
 
 
-CHANNEL_LABELS = [
-    "Fp1", "Fp2", "F7", "F3", "Fz", "F4", "F8", "FC5",
-    "FC1", "FC2", "FC6", "T7", "C3", "Cz", "C4", "T8",
-    "CP5", "CP1", "CP2", "CP6", "P7", "P3", "Pz", "P4",
-    "P8", "PO9", "O1", "Oz", "O2", "PO10", "AFz", "FCz",
+# Representative standard 32-channel actiCAP/LiveAmp montage used only by the
+# simulator. The delivered cap and BrainVision workspace remain authoritative.
+DEFAULT_SIMULATED_CHANNEL_LABELS = [
+    "Fp1", "Fp2", "F7", "F3", "Fz", "F4", "F8", "FT9",
+    "FC5", "FC1", "FC2", "FC6", "FT10", "C3", "Cz", "C4",
+    "T7", "T8", "TP9", "CP5", "CP1", "CP2", "CP6", "TP10",
+    "P7", "P3", "Pz", "P4", "P8", "O1", "Oz", "O2",
 ]
 
 SCENARIO_AMPLITUDES = {
@@ -32,6 +34,13 @@ def build_arg_parser():
     parser.add_argument("--chunk-ms", type=float, default=20.0)
     parser.add_argument("--state-sec", type=float, default=12.0)
     parser.add_argument(
+        "--channel-labels",
+        help=(
+            "Comma-separated labels for all 32 simulated channels. Default is a "
+            "representative standard montage, not a guaranteed delivery mapping."
+        ),
+    )
+    parser.add_argument(
         "--scenario",
         choices=("cycle", *SCENARIO_AMPLITUDES),
         default="cycle",
@@ -40,15 +49,17 @@ def build_arg_parser():
     return parser
 
 
-def synthetic_chunk(rng, start_sample, sample_count, fs, scenario, phases):
+def synthetic_chunk(
+    rng, start_sample, sample_count, fs, scenario, phases, channel_count
+):
     """Create samples x channels EEG values in microvolts."""
     theta_amp, alpha_amp, beta_amp, gamma_amp = SCENARIO_AMPLITUDES[scenario]
     t = (start_sample + np.arange(sample_count)) / fs
     frequencies = (6.0, 10.0, 20.0, 38.0)
     amplitudes = (theta_amp, alpha_amp, beta_amp, gamma_amp)
 
-    chunk = np.empty((sample_count, len(CHANNEL_LABELS)), dtype=np.float32)
-    for channel in range(len(CHANNEL_LABELS)):
+    chunk = np.empty((sample_count, channel_count), dtype=np.float32)
+    for channel in range(channel_count):
         signal = np.zeros(sample_count)
         spatial_scale = 0.8 + 0.4 * np.sin((channel + 1) * 0.73) ** 2
         for band_index, (frequency, amplitude) in enumerate(zip(frequencies, amplitudes)):
@@ -69,6 +80,16 @@ def main():
     if args.chunk_ms <= 0 or args.state_sec <= 0:
         raise SystemExit("--chunk-ms and --state-sec must be positive.")
 
+    channel_labels = (
+        [label.strip() for label in args.channel_labels.split(",")]
+        if args.channel_labels
+        else DEFAULT_SIMULATED_CHANNEL_LABELS
+    )
+    if len(channel_labels) != 32 or any(not label for label in channel_labels):
+        raise SystemExit("--channel-labels must contain exactly 32 non-empty labels.")
+    if len({label.casefold() for label in channel_labels}) != 32:
+        raise SystemExit("--channel-labels must not contain duplicate labels.")
+
     try:
         from pylsl import StreamInfo, StreamOutlet
     except ImportError as error:
@@ -79,7 +100,7 @@ def main():
     info = StreamInfo(
         args.name,
         "EEG",
-        len(CHANNEL_LABELS),
+        len(channel_labels),
         args.fs,
         "float32",
         "hyponoia-sim-liveamp32",
@@ -87,7 +108,7 @@ def main():
     info.desc().append_child_value("manufacturer", "Brain Products (simulated)")
     info.desc().append_child_value("model", "LiveAmp 32")
     channels = info.desc().append_child("channels")
-    for label in CHANNEL_LABELS:
+    for label in channel_labels:
         channel = channels.append_child("channel")
         channel.append_child_value("label", label)
         channel.append_child_value("type", "EEG")
@@ -95,7 +116,7 @@ def main():
 
     outlet = StreamOutlet(info, chunk_size=max(1, int(args.fs * args.chunk_ms / 1000)))
     rng = np.random.default_rng(args.seed)
-    phases = rng.uniform(0, 2 * np.pi, (len(CHANNEL_LABELS), 4))
+    phases = rng.uniform(0, 2 * np.pi, (len(channel_labels), 4))
     scenarios = list(SCENARIO_AMPLITUDES)
     chunk_samples = max(1, int(round(args.fs * args.chunk_ms / 1000)))
     start = time.perf_counter()
@@ -104,6 +125,7 @@ def main():
     last_scenario = None
 
     print(f"Publishing '{args.name}': 32 EEG channels at {args.fs:g} Hz")
+    print("Simulator montage only; the real LSL stream metadata are authoritative.")
     print("Start hyponoia_microstates.py in another terminal. Ctrl-C stops the stream.")
 
     try:
@@ -118,7 +140,13 @@ def main():
                 last_scenario = scenario
 
             chunk = synthetic_chunk(
-                rng, sample_index, chunk_samples, args.fs, scenario, phases
+                rng,
+                sample_index,
+                chunk_samples,
+                args.fs,
+                scenario,
+                phases,
+                len(channel_labels),
             )
             outlet.push_chunk(chunk.tolist())
             sample_index += chunk_samples
