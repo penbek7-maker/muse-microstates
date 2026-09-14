@@ -74,18 +74,20 @@ system identified in quotation QT-26167 V3:
 - Brain Products LiveAmp wireless amplifier, 32 channels
 - actiCAP snap 32-channel active-electrode system for LiveAmp
 - BrainVision Recorder
-- TriggerBox Plus, with wireless markers carried through LSL
 
 The physical channel labels and order come from the delivered cap and the
 BrainVision/LSL configuration. Hyponoia reads them from the live stream and
 does not require a hard-coded montage.
 
+Hyponoia intentionally uses only the continuous EEG signal. TriggerBox events,
+buttons, and marker streams are outside this version's scope.
+
 The laboratory data path is:
 
 ```text
 LiveAmp 32 + actiCAP -> official Brain Products LSL connector -> EEG stream
-TriggerBox Plus      -> official Brain Products LSL connector -> Markers stream
-EEG + Markers        -> hyponoia_microstates.py -> OSC -> Hyponoia / Max/MSP
+EEG                   -> hyponoia_microstates.py -> rhythms -> states
+states                -> OSC -> Hyponoia / Max/MSP
 ```
 
 Use strict Birmingham compatibility mode in the laboratory:
@@ -93,29 +95,13 @@ Use strict Birmingham compatibility mode in the laboratory:
 ```bash
 python hyponoia_microstates.py \
   --profile liveamp \
-  --require-liveamp32 \
-  --marker-stream-type Markers
+  --require-liveamp32
 ```
 
 This refuses to start with an ambiguous EEG stream unless it exposes exactly
-32 uniquely labelled EEG channels. It forwards TriggerBox events as:
-
-```text
-/eeg/marker
-/eeg/marker_time
-/eeg/marker_source
-```
-
-If the Brain Products connector uses a different marker stream type or name,
-select it without changing the code:
-
-```bash
-python hyponoia_microstates.py \
-  --profile liveamp \
-  --require-liveamp32 \
-  --marker-stream-type Markers \
-  --marker-stream-name MyTriggerBox
-```
+32 uniquely labelled EEG channels. It then calculates the same theta, alpha,
+beta, and gamma rhythms and applies the same artistic state rules used by the
+Muse version.
 
 ## Hyponoia: Any EEG via LSL
 
@@ -180,10 +166,6 @@ Start the synthetic 32-channel LiveAmp-like stream:
 ```bash
 python simulate_liveamp.py
 ```
-
-By default the simulator now also publishes a separate, irregular
-`type="Markers"` stream that behaves like the TriggerBox connection. A marker is
-sent whenever the simulated mental-state scenario changes.
 
 The simulator uses a representative standard 32-channel montage. It does not
 claim that the delivered cap or BrainVision workspace will use the same labels

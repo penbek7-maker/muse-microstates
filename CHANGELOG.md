@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1 - EEG rhythms only
+
+### Changed
+
+- Narrowed the Birmingham integration to the continuous LiveAmp 32 EEG stream.
+- Removed TriggerBox and marker-stream handling from the Hyponoia engine and
+  simulator because the artistic state logic only requires EEG rhythms.
+- Confirmed that LiveAmp uses the same theta, alpha, beta, gamma, baseline, and
+  rule-based state pipeline as the original Muse version.
+
 ## 0.4.0 - Birmingham LiveAmp 32 compatibility
 
 ### Added

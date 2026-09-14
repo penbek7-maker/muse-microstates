@@ -5,7 +5,6 @@ import numpy as np
 from hyponoia_microstates import (
     aggregate_bandpowers,
     detect_state,
-    format_marker,
     infer_profile,
     liveamp32_compatibility_issues,
     select_channel_indices,
@@ -55,10 +54,6 @@ class HyponoiaMicrostatesTests(unittest.TestCase):
         labels = [f"EEG{index + 1}" for index in range(31)] + ["EEG1"]
         issues = liveamp32_compatibility_issues(labels, ["EEG"] * 32)
         self.assertIn("EEG channel labels are not unique", issues)
-
-    def test_marker_format_is_stable(self):
-        self.assertEqual(format_marker(["S  1"]), "S  1")
-        self.assertEqual(format_marker([12, "button"]), "12|button")
 
     def test_bandpower_finds_dominant_alpha(self):
         fs = 500

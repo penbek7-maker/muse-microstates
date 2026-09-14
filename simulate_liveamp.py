@@ -34,15 +34,6 @@ def build_arg_parser():
     parser.add_argument("--chunk-ms", type=float, default=20.0)
     parser.add_argument("--state-sec", type=float, default=12.0)
     parser.add_argument(
-        "--marker-stream-name",
-        default="Hyponoia-Simulated-TriggerBox-Markers",
-    )
-    parser.add_argument(
-        "--no-markers",
-        action="store_true",
-        help="Do not publish the simulated TriggerBox marker stream.",
-    )
-    parser.add_argument(
         "--channel-labels",
         help=(
             "Comma-separated labels for all 32 simulated channels. Default is a "
@@ -100,7 +91,7 @@ def main():
         raise SystemExit("--channel-labels must not contain duplicate labels.")
 
     try:
-        from pylsl import IRREGULAR_RATE, StreamInfo, StreamOutlet, cf_string
+        from pylsl import StreamInfo, StreamOutlet
     except ImportError as error:
         raise SystemExit(
             "pylsl is required. Install the project requirements first."
@@ -124,25 +115,6 @@ def main():
         channel.append_child_value("unit", "microvolts")
 
     outlet = StreamOutlet(info, chunk_size=max(1, int(args.fs * args.chunk_ms / 1000)))
-    marker_outlet = None
-    if not args.no_markers:
-        marker_info = StreamInfo(
-            args.marker_stream_name,
-            "Markers",
-            1,
-            IRREGULAR_RATE,
-            cf_string,
-            "hyponoia-sim-triggerbox",
-        )
-        marker_info.desc().append_child_value(
-            "manufacturer", "Brain Products TriggerBox Plus (simulated)"
-        )
-        marker_channel = marker_info.desc().append_child("channels").append_child(
-            "channel"
-        )
-        marker_channel.append_child_value("label", "Trigger")
-        marker_channel.append_child_value("type", "Markers")
-        marker_outlet = StreamOutlet(marker_info)
     rng = np.random.default_rng(args.seed)
     phases = rng.uniform(0, 2 * np.pi, (len(channel_labels), 4))
     scenarios = list(SCENARIO_AMPLITUDES)
@@ -153,8 +125,6 @@ def main():
     last_scenario = None
 
     print(f"Publishing '{args.name}': 32 EEG channels at {args.fs:g} Hz")
-    if marker_outlet:
-        print(f"Publishing markers: '{args.marker_stream_name}'")
     print("Simulator montage only; the real LSL stream metadata are authoritative.")
     print("Start hyponoia_microstates.py in another terminal. Ctrl-C stops the stream.")
 
@@ -167,8 +137,6 @@ def main():
                 scenario = args.scenario
             if scenario != last_scenario:
                 print(f"Scenario: {scenario}")
-                if marker_outlet:
-                    marker_outlet.push_sample([f"state:{scenario}"])
                 last_scenario = scenario
 
             chunk = synthetic_chunk(

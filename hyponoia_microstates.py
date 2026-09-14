@@ -26,7 +26,6 @@ DEFAULT_BASELINE_SEC = 60.0
 DEFAULT_Z_THRESHOLD = 0.5
 DEFAULT_OSC_IP = "127.0.0.1"
 DEFAULT_OSC_PORT = 5001
-DEFAULT_MARKER_STREAM_TYPE = "Markers"
 
 BANDS = {
     "theta": (4, 8),
@@ -295,26 +294,6 @@ def build_arg_parser():
         ),
     )
     parser.add_argument(
-        "--marker-stream-type",
-        default=DEFAULT_MARKER_STREAM_TYPE,
-        help="LSL type used by the TriggerBox/marker stream. Default: Markers.",
-    )
-    parser.add_argument(
-        "--marker-stream-name",
-        help="Exact or partial name of the optional LSL marker stream.",
-    )
-    parser.add_argument(
-        "--marker-timeout",
-        type=float,
-        default=1.0,
-        help="Seconds to look for the optional marker stream.",
-    )
-    parser.add_argument(
-        "--no-markers",
-        action="store_true",
-        help="Do not look for or forward an LSL marker stream.",
-    )
-    parser.add_argument(
         "--aggregation",
         choices=("median", "mean", "single"),
         default="median",
@@ -379,34 +358,6 @@ def send_metadata(client, stream_name, profile, fs, selected_labels, output_unit
     client.send_message("/eeg/channels", len(selected_labels))
     client.send_message("/eeg/channel_names", selected_labels)
     client.send_message("/eeg/unit", output_unit)
-
-
-def format_marker(sample):
-    """Convert a one- or multi-field LSL marker sample to a stable OSC string."""
-    if sample is None:
-        return ""
-    if not isinstance(sample, (list, tuple)):
-        return str(sample)
-    return "|".join(str(value) for value in sample)
-
-
-def forward_pending_markers(marker_inlet, client, print_output=True):
-    """Forward every currently available LSL marker to Hyponoia over OSC."""
-    if marker_inlet is None:
-        return 0
-
-    forwarded = 0
-    while True:
-        sample, timestamp = marker_inlet.pull_sample(timeout=0.0)
-        if sample is None:
-            break
-        marker = format_marker(sample)
-        client.send_message("/eeg/marker", marker)
-        client.send_message("/eeg/marker_time", float(timestamp))
-        if print_output:
-            print(f"Marker: {marker} @ {timestamp:.6f}")
-        forwarded += 1
-    return forwarded
 
 
 def send_initializing(client, bp):
@@ -518,36 +469,6 @@ def main():
         client.send_message("/eeg/compatibility", "brainproducts-liveamp32")
     print(f"Sending OSC to {args.osc_ip}:{args.osc_port}")
 
-    marker_inlet = None
-    if not args.no_markers:
-        marker_streams = resolve_byprop(
-            "type", args.marker_stream_type, timeout=args.marker_timeout
-        )
-        if marker_streams:
-            try:
-                selected_marker, marker_count = choose_stream(
-                    marker_streams, args.marker_stream_name
-                )
-                marker_inlet = StreamInlet(selected_marker, max_buflen=60)
-                marker_info = marker_inlet.info(timeout=args.stream_timeout)
-                print(
-                    f"Connected to marker stream: {marker_info.name()} "
-                    f"(type={marker_info.type()})"
-                )
-                client.send_message("/eeg/marker_source", marker_info.name())
-                if marker_count > 1 and not args.marker_stream_name:
-                    print(
-                        f"Found {marker_count} marker streams; using "
-                        f"'{marker_info.name()}'. Use --marker-stream-name to choose."
-                    )
-            except ValueError as error:
-                print(f"Marker stream warning: {error}")
-        else:
-            print(
-                "No LSL marker stream found; EEG processing will continue without "
-                "TriggerBox events."
-            )
-
     csv_handle = None
     csv_writer = None
     if args.record:
@@ -564,7 +485,6 @@ def main():
                 print("Duration reached. Stopping.")
                 break
 
-            forward_pending_markers(marker_inlet, client, args.print_output)
             chunk, _timestamps = inlet.pull_chunk(
                 timeout=1.0, max_samples=max(win_samples, int(fs))
             )
@@ -648,7 +568,6 @@ def main():
                         f"T={z_vals['theta']:.2f}, G={z_vals['gamma']:.2f} | "
                         f"state={state_idx} ({state_name})"
                     )
-            forward_pending_markers(marker_inlet, client, args.print_output)
     except KeyboardInterrupt:
         print("\nStopped by user.")
     finally:
