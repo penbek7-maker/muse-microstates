@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0 - Device-independent Hyponoia EEG engine
+
+### Added
+
+- Added `hyponoia_microstates.py` for any regular LSL EEG stream.
+- Added automatic sampling-rate and channel-metadata discovery.
+- Added automatic amplitude-unit normalisation to microvolts.
+- Added explicit stream and channel selection.
+- Added Muse, LiveAmp, and generic automatic profiles.
+- Preserved the existing OSC contract used by Hyponoia/Max/MSP.
+- Added OSC source metadata under `/eeg/*`.
+- Added a synthetic 32-channel LiveAmp-like LSL source for hardware-free testing.
+- Added automated tests for state rules, channel selection, and bandpower.
+
 ## 0.2.1 — All reported issues fixed
 
 Fixes based on external testing and compatibility feedback.

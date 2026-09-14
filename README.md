@@ -1,9 +1,14 @@
-# Muse Microstates
+# Muse Microstates / Hyponoia EEG Engine
 
 ## Muse 2 → Python → Max/MSP  
 ### Real-Time EEG Band Analysis and Rule-Based Micro Mental States
 
 This repository contains a lightweight EEG interaction system for Muse 2, Python, Lab Streaming Layer, OSC, and Max/MSP.
+
+It also includes a device-independent Hyponoia engine. Muse 2 remains supported,
+while any EEG system that publishes an LSL stream with `type="EEG"` can use the
+same analysis, states, and OSC interface. This includes LiveAmp through the
+official BrainVision LSL Connector.
 
 It was developed for artistic research, electroacoustic composition, live performance, sound art, and neuro-responsive interaction.
 
@@ -51,10 +56,90 @@ The system analyses:
 ```text
 README.md              Project documentation
 muse_microstates.py    Main Python script
+hyponoia_microstates.py Device-independent EEG engine for Hyponoia
+simulate_liveamp.py    Synthetic 32-channel EEG source for hardware-free testing
+tests/                  Automated signal and compatibility tests
 requirements.txt       Python dependencies
 CHANGELOG.md           Version history
 LICENSE                MIT License
 ```
+
+---
+
+## Hyponoia: Any EEG via LSL
+
+The new pipeline is:
+
+```text
+Muse / LiveAmp / another EEG / simulator
+↓
+Lab Streaming Layer (stream type: EEG)
+↓
+hyponoia_microstates.py
+↓
+Welch bandpower + rolling baseline + rule-based states
+↓
+stable OSC messages
+↓
+Hyponoia / Max/MSP
+```
+
+The sampling rate, channel metadata, and amplitude units are read from the LSL
+stream. Recognised volts, millivolts, microvolts, and nanovolts are normalised to
+microvolts. In automatic mode, Muse keeps the historical AF7 behaviour.
+Multi-channel devices use the median bandpower across EEG channels, unless
+channels are selected explicitly.
+
+Run with any available EEG stream:
+
+```bash
+python hyponoia_microstates.py
+```
+
+Choose a specific stream or channels:
+
+```bash
+python hyponoia_microstates.py --stream-name LiveAmp --channels Fz,Cz,Pz
+```
+
+The existing Hyponoia messages remain unchanged:
+
+```text
+/bands
+/bands_z
+/state
+/state_name
+```
+
+Additional source metadata is sent once at connection:
+
+```text
+/eeg/source
+/eeg/profile
+/eeg/fs
+/eeg/channels
+/eeg/channel_names
+/eeg/unit
+```
+
+### Test without EEG hardware
+
+Start the synthetic 32-channel LiveAmp-like stream:
+
+```bash
+python simulate_liveamp.py
+```
+
+In another terminal, connect the Hyponoia engine:
+
+```bash
+python hyponoia_microstates.py \
+  --stream-name Hyponoia-Simulated-LiveAmp-32 \
+  --baseline-sec 10
+```
+
+When the physical LiveAmp is available, replace the simulator with the official
+BrainVision LSL Connector and keep the Hyponoia engine and OSC mapping unchanged.
 
 ---
 
