@@ -26,6 +26,7 @@ DEFAULT_BASELINE_SEC = 60.0
 DEFAULT_Z_THRESHOLD = 0.5
 DEFAULT_OSC_IP = "127.0.0.1"
 DEFAULT_OSC_PORT = 5001
+DEFAULT_MARKER_STREAM_TYPE = "Markers"
 
 BANDS = {
     "theta": (4, 8),
@@ -217,6 +218,28 @@ def select_channel_indices(labels, kinds, requested=None, profile="generic"):
     return eeg_indices or list(range(len(labels)))
 
 
+def liveamp32_compatibility_issues(labels, kinds):
+    """Return metadata issues that would make a LiveAmp-32 setup ambiguous."""
+    eeg_indices = [
+        index
+        for index, (label, kind) in enumerate(zip(labels, kinds))
+        if _is_eeg_channel(label, kind)
+    ]
+    issues = []
+    if len(eeg_indices) != 32:
+        issues.append(
+            f"expected 32 EEG channels for LiveAmp 32, found {len(eeg_indices)}"
+        )
+
+    eeg_labels = [labels[index] for index in eeg_indices]
+    folded = [label.casefold() for label in eeg_labels]
+    if len(folded) != len(set(folded)):
+        issues.append("EEG channel labels are not unique")
+    if any(re.fullmatch(r"ch\d+", label, re.IGNORECASE) for label in eeg_labels):
+        issues.append("one or more EEG channels have fallback labels instead of cap labels")
+    return issues
+
+
 def choose_stream(streams, requested_name=None, requested_source_id=None):
     """Choose one LSL stream deterministically from resolved candidates."""
     candidates = list(streams)
@@ -262,6 +285,34 @@ def build_arg_parser():
     parser.add_argument(
         "--channels",
         help="Comma-separated channel labels or zero-based indices. Default: AF7 for Muse, all EEG channels otherwise.",
+    )
+    parser.add_argument(
+        "--require-liveamp32",
+        action="store_true",
+        help=(
+            "Fail unless the selected stream is recognised as LiveAmp and exposes "
+            "exactly 32 uniquely labelled EEG channels."
+        ),
+    )
+    parser.add_argument(
+        "--marker-stream-type",
+        default=DEFAULT_MARKER_STREAM_TYPE,
+        help="LSL type used by the TriggerBox/marker stream. Default: Markers.",
+    )
+    parser.add_argument(
+        "--marker-stream-name",
+        help="Exact or partial name of the optional LSL marker stream.",
+    )
+    parser.add_argument(
+        "--marker-timeout",
+        type=float,
+        default=1.0,
+        help="Seconds to look for the optional marker stream.",
+    )
+    parser.add_argument(
+        "--no-markers",
+        action="store_true",
+        help="Do not look for or forward an LSL marker stream.",
     )
     parser.add_argument(
         "--aggregation",
@@ -330,6 +381,34 @@ def send_metadata(client, stream_name, profile, fs, selected_labels, output_unit
     client.send_message("/eeg/unit", output_unit)
 
 
+def format_marker(sample):
+    """Convert a one- or multi-field LSL marker sample to a stable OSC string."""
+    if sample is None:
+        return ""
+    if not isinstance(sample, (list, tuple)):
+        return str(sample)
+    return "|".join(str(value) for value in sample)
+
+
+def forward_pending_markers(marker_inlet, client, print_output=True):
+    """Forward every currently available LSL marker to Hyponoia over OSC."""
+    if marker_inlet is None:
+        return 0
+
+    forwarded = 0
+    while True:
+        sample, timestamp = marker_inlet.pull_sample(timeout=0.0)
+        if sample is None:
+            break
+        marker = format_marker(sample)
+        client.send_message("/eeg/marker", marker)
+        client.send_message("/eeg/marker_time", float(timestamp))
+        if print_output:
+            print(f"Marker: {marker} @ {timestamp:.6f}")
+        forwarded += 1
+    return forwarded
+
+
 def send_initializing(client, bp):
     client.send_message("/bands", [bp["alpha"], bp["beta"], bp["theta"], bp["gamma"]])
     client.send_message("/state", 0)
@@ -370,6 +449,20 @@ def main():
     stream_name = info.name()
     labels, kinds, units = extract_channel_metadata(info)
     profile = args.profile if args.profile != "auto" else infer_profile(stream_name, labels)
+
+    liveamp_issues = liveamp32_compatibility_issues(labels, kinds)
+    if args.require_liveamp32:
+        if profile != "liveamp":
+            raise SystemExit(
+                "The selected EEG stream is not recognised as LiveAmp. "
+                "Choose the Brain Products stream or pass --profile liveamp."
+            )
+        if liveamp_issues:
+            raise SystemExit(
+                "LiveAmp-32 compatibility check failed: " + "; ".join(liveamp_issues)
+            )
+    elif profile == "liveamp" and liveamp_issues:
+        print("LiveAmp metadata warning: " + "; ".join(liveamp_issues))
 
     try:
         channel_indices = select_channel_indices(
@@ -421,7 +514,39 @@ def main():
 
     client = udp_client.SimpleUDPClient(args.osc_ip, args.osc_port)
     send_metadata(client, stream_name, profile, fs, selected_labels, output_unit)
+    if profile == "liveamp" and not liveamp_issues:
+        client.send_message("/eeg/compatibility", "brainproducts-liveamp32")
     print(f"Sending OSC to {args.osc_ip}:{args.osc_port}")
+
+    marker_inlet = None
+    if not args.no_markers:
+        marker_streams = resolve_byprop(
+            "type", args.marker_stream_type, timeout=args.marker_timeout
+        )
+        if marker_streams:
+            try:
+                selected_marker, marker_count = choose_stream(
+                    marker_streams, args.marker_stream_name
+                )
+                marker_inlet = StreamInlet(selected_marker, max_buflen=60)
+                marker_info = marker_inlet.info(timeout=args.stream_timeout)
+                print(
+                    f"Connected to marker stream: {marker_info.name()} "
+                    f"(type={marker_info.type()})"
+                )
+                client.send_message("/eeg/marker_source", marker_info.name())
+                if marker_count > 1 and not args.marker_stream_name:
+                    print(
+                        f"Found {marker_count} marker streams; using "
+                        f"'{marker_info.name()}'. Use --marker-stream-name to choose."
+                    )
+            except ValueError as error:
+                print(f"Marker stream warning: {error}")
+        else:
+            print(
+                "No LSL marker stream found; EEG processing will continue without "
+                "TriggerBox events."
+            )
 
     csv_handle = None
     csv_writer = None
@@ -439,6 +564,7 @@ def main():
                 print("Duration reached. Stopping.")
                 break
 
+            forward_pending_markers(marker_inlet, client, args.print_output)
             chunk, _timestamps = inlet.pull_chunk(
                 timeout=1.0, max_samples=max(win_samples, int(fs))
             )
@@ -522,6 +648,7 @@ def main():
                         f"T={z_vals['theta']:.2f}, G={z_vals['gamma']:.2f} | "
                         f"state={state_idx} ({state_name})"
                     )
+            forward_pending_markers(marker_inlet, client, args.print_output)
     except KeyboardInterrupt:
         print("\nStopped by user.")
     finally:

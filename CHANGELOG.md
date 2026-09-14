@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 - Birmingham LiveAmp 32 compatibility
+
+### Added
+
+- Added a strict compatibility check for the quoted Brain Products LiveAmp
+  32-channel system at Birmingham City University.
+- Added optional discovery of the TriggerBox LSL marker stream.
+- Added forwarding of marker values, timestamps, and source metadata over OSC.
+- Added a separate simulated TriggerBox marker stream to the LiveAmp simulator.
+- Added laboratory-specific setup instructions while preserving Muse and
+  device-independent EEG support.
+
 ## 0.3.1 - Simulator montage clarification
 
 ### Changed
