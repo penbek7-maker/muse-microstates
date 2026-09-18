@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0 — All-pair dominant interaction states
+
+- Replaced four selected Boolean pair rules and `theta_dominant` with a
+  comparison of all six possible theta/alpha/beta/gamma pairs.
+- Defined each pair score as the mean of its two baseline-relative z-scores.
+- A pair state is active only when it ranks first and both bands exceed the
+  configured z-score threshold.
+- Added an optional minimum winner margin with `--pair-margin`.
+- Added pair scores, rankings, high-band flags, and one-hot active-pair OSC
+  messages and CSV fields.
+- Changed the default analysis from one AF7 channel to the median of AF7 and
+  AF8, while retaining configurable channel selection.
+- Added dB conversion before rolling-baseline standardization.
+- Added academic rationale and terminology limitations.
+
 ## 0.2.1 — All reported issues fixed
 
 Fixes based on external testing and compatibility feedback.

@@ -1,7 +1,7 @@
-# Muse Microstates
+# Muse Band-Pair Interaction States
 
 ## Muse 2 → Python → Max/MSP  
-### Real-Time EEG Band Analysis and Rule-Based Micro Mental States
+### Real-Time EEG Band Analysis and Dominant Band-Pair Interaction States
 
 This repository contains a lightweight EEG interaction system for Muse 2, Python, Lab Streaming Layer, OSC, and Max/MSP.
 
@@ -13,7 +13,8 @@ It is **not** intended for medical, diagnostic, therapeutic, or clinical use.
 
 ## What the System Does
 
-The system reads EEG from a Muse 2 headset and translates changing EEG band relationships into rule-based interaction states.
+The system reads EEG from a Muse 2 headset and translates baseline-relative
+EEG spectral deviations into rule-based interaction states.
 
 The pipeline is:
 
@@ -28,7 +29,7 @@ Welch bandpower analysis
 ↓
 Rolling baseline and z-scores
 ↓
-Rule-based micro mental states
+All-pair comparison and dominant interaction state
 ↓
 OSC messages
 ↓
@@ -51,6 +52,7 @@ The system analyses:
 ```text
 README.md              Project documentation
 muse_microstates.py    Main Python script
+ACADEMIC_RATIONALE.md  Academic rationale, limitations, and presentation wording
 requirements.txt       Python dependencies
 CHANGELOG.md           Version history
 LICENSE                MIT License
@@ -184,7 +186,62 @@ source ~/muse2-env/bin/activate
 python muse_microstates.py
 ```
 
-You should see live band values, z-scores, and detected states.
+You should see live band values, z-scores, all six pair scores, and the
+detected dominant pair state.
+
+### How the pair comparison works
+
+The script compares all six unordered pairs formed by theta, alpha, beta, and
+gamma. Each band is first converted to dB and standardized against its own
+rolling baseline. For each pair:
+
+```text
+pair_score(A, B) = (z_A + z_B) / 2
+```
+
+The pair with the highest score is the candidate state. It becomes active only
+when both constituent bands exceed `--z-threshold` and its score is greater
+than the score of every other pair. `--pair-margin` can require an additional
+lead over the runner-up. This is a descriptive comparison of band-power
+deviations, not a connectivity, synchrony, or coupling measure.
+
+The fixed pair order is:
+
+```text
+0 alpha_theta
+1 beta_gamma
+2 beta_alpha
+3 alpha_gamma
+4 theta_beta
+5 theta_gamma
+```
+
+Additional OSC messages are:
+
+```text
+/analysis_status  initializing | running
+/baseline_progress  value from 0.0 to 1.0
+/bands_db         alpha, beta, theta, gamma power in decibels
+/bands_high       four 0/1 flags in alpha, beta, theta, gamma order
+/pair_names       six names in the fixed order above
+/pair_scores      six joint-elevation scores
+/pair_active      one-hot winning-pair flags, or all zero
+/top_pair_index   integer from 0 to 5
+/top_pair_name    string
+/top_pair_score   float
+/top_pair_margin  winning score minus runner-up score
+/state            0 for neutral, otherwise 1 to 6
+/state_name       neutral or pair_name_high
+```
+
+The script uses the median band power of the frontal Muse channels
+AF7 and AF8 (indices 1 and 2). Select different channels with, for example,
+`--channels 0,1,2,3`. Z-scores are calculated from log-transformed (dB) power.
+Recording example:
+
+```bash
+python muse_microstates.py --record pair_take01.csv --duration 600
+```
 
 ---
 
@@ -202,7 +259,7 @@ The following OSC messages are sent:
 ```text
 /bands      [alpha, beta, theta, gamma]
 /bands_z    [z_alpha, z_beta, z_theta, z_gamma]
-/state      integer from 0 to 5
+/state      integer from 0 to 6
 /state_name string
 ```
 
@@ -224,18 +281,19 @@ python muse_microstates.py --osc-ip 127.0.0.1 --osc-port 5001
 
 ---
 
-## Micro Mental States
+## Band-Pair Interaction States
 
 These states are **artistic interaction categories**. They should not be understood as clinical EEG states or emotion recognition.
 
 | State | Name | Rule |
 |---:|---|---|
 | 0 | `neutral` | No specific rule is triggered |
-| 1 | `alpha_theta` | Alpha and theta are high; beta and gamma are not high |
-| 2 | `beta_gamma` | Beta and gamma are high; alpha and theta are not high |
-| 3 | `beta_alpha` | Beta and alpha are high; theta and gamma are not high |
-| 4 | `alpha_gamma` | Alpha and gamma are high; beta and theta are not high |
-| 5 | `theta_dominant` | Theta is above threshold and higher than alpha, beta, and gamma |
+| 1 | `alpha_theta_high` | Alpha–theta has the highest pair score and both bands are high |
+| 2 | `beta_gamma_high` | Beta–gamma has the highest pair score and both bands are high |
+| 3 | `beta_alpha_high` | Beta–alpha has the highest pair score and both bands are high |
+| 4 | `alpha_gamma_high` | Alpha–gamma has the highest pair score and both bands are high |
+| 5 | `theta_beta_high` | Theta–beta has the highest pair score and both bands are high |
+| 6 | `theta_gamma_high` | Theta–gamma has the highest pair score and both bands are high |
 
 The default high-band threshold is:
 
@@ -247,6 +305,12 @@ You can change it:
 
 ```bash
 python muse_microstates.py --z-threshold 0.7
+```
+
+You can also require the winner to lead the second pair by a minimum score:
+
+```bash
+python muse_microstates.py --pair-margin 0.1
 ```
 
 ---
@@ -265,8 +329,10 @@ The CSV contains:
 
 ```text
 timestamp
-alpha, beta, theta, gamma
-z_alpha, z_beta, z_theta, z_gamma
+theta, alpha, beta, gamma
+db_theta, db_alpha, db_beta, db_gamma
+z_theta, z_alpha, z_beta, z_gamma
+all six pair scores and one-hot active flags
 state, state_name
 ```
 
@@ -298,8 +364,9 @@ Common options:
 --osc-ip 127.0.0.1        Set OSC target IP
 --osc-port 5001           Set OSC target port
 --z-threshold 0.5         Set z-score threshold
---channel 1               Select EEG channel index
---print                   Print values to console; kept for old README compatibility
+--pair-margin 0.0         Minimum lead over the second-ranked pair
+--channels 1,2            Select comma-separated EEG channel indices
+--print                   Print values to console
 --no-print                Disable console output
 ```
 
@@ -335,7 +402,9 @@ Recent `pylsl` versions bundle `liblsl`. Therefore, Homebrew LSL installation is
 
 This project should be understood as a neuro-responsive performance framework.
 
-It does not claim to read emotions or diagnose mental states. Instead, it translates changing EEG band relationships into higher-level musical interaction states that can be mapped to compositional processes in Max/MSP.
+It does not claim to read emotions or diagnose mental states. Instead, it
+translates changing EEG band-power deviations into higher-level musical
+interaction states that can be mapped to compositional processes in Max/MSP.
 
 In performance, these states may be used to trigger or influence:
 
