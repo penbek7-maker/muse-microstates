@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.1 — Restore the working five-state model
+
+- Restored the tested `muse_microstates.py` used in performance.
+- Restored states 1–4 as the original exclusive Boolean band-pair rules.
+- Restored state 5 as `theta_dominant`.
+- Restored AF7 as the single analysis channel.
+- Restored the original rolling-bandpower z-score implementation and OSC output.
+- Pinned NumPy below version 2 because the restored script uses `np.trapz`.
+- Updated the README and academic rationale to match the working script.
+- Removed the six-pair model from the active implementation. Version 0.3.0 remains documented below as historical development.
+
 ## 0.3.0 — All-pair dominant interaction states
 
 - Replaced four selected Boolean pair rules and `theta_dominant` with a
